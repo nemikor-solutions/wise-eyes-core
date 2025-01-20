@@ -9,6 +9,7 @@ import type {
     Mode,
     OwlcmsLiftType,
     PlatformState,
+    RecordKind,
 } from './platform';
 import {
     klona,
@@ -33,11 +34,21 @@ interface DecisionBody {
     decisionEventType:
         | 'DOWN_SIGNAL'
         | 'FULL_DECISION'
-        | 'RESET';
+        | 'JURY_DECISION'
+        | 'RESET'
+        | 'START_DELIBERATION';
     fop: string;
     fopState: FopState;
+    juryDecision: JuryDecision;
+    juryReversal: BooleanString;
     mode: Mode;
+    recordKind: RecordKind;
+    waitForAnnouncer: BooleanString;
 }
+
+type JuryDecision =
+    | 'BAD_LIFT'
+    | 'GOOD_LIFT';
 
 type PlatformCallback = (platform: Platform) => void;
 
@@ -80,6 +91,8 @@ interface UpdateBody {
     liftTypeKey: OwlcmsLiftType;
     liftType: string;
     mode: Mode;
+    recordKind: RecordKind;
+    records: string;
     startNumber: string;
     translationMap: string;
 }
@@ -160,9 +173,6 @@ export default function createApp({
         extended: true,
     }));
 
-    // TODO: Jury decisions
-    // TODO: Record attempts
-
     app.post('/decision', (request: Request<DecisionBody>, response) => {
         response.end();
 
@@ -179,13 +189,15 @@ export default function createApp({
             down,
             fop,
             fopState,
+            juryDecision,
+            juryReversal,
             mode,
+            recordKind,
+            waitForAnnouncer,
         } = request.body;
 
         withPlatformForServer(fop, (platform) => {
-            platform.setFopState(fopState);
-            platform.setMode(mode);
-
+            let handled = true;
             switch (eventType) {
                 case 'DOWN_SIGNAL':
                     platform.setDownSignal(down === 'true');
@@ -209,13 +221,37 @@ export default function createApp({
                                 : 'bad',
                     });
                     break;
+                case 'JURY_DECISION':
+                    if (waitForAnnouncer === 'true') {
+                        return;
+                    }
+
+                    platform.setJuryDecision({
+                        decision: juryDecision === 'GOOD_LIFT'
+                            ? 'good'
+                            : 'bad',
+                        reversal: juryReversal === 'true',
+                    });
+                    break;
                 case 'RESET':
                     platform.resetDecisions();
                     break;
+                case 'START_DELIBERATION':
+                    // Do nothing. This will be handled in `/update`
+                    handled = false;
+                    break;
                 default:
+                    handled = false;
+
                     if (debug) {
                         console.log(`!! UNHANDLED DECISION EVENT decisionEventType=${eventType}`);
                     }
+            }
+
+            if (handled) {
+                platform.setFopState(fopState);
+                platform.setMode(mode);
+                platform.setRecordKind(recordKind);
             }
         });
     });
@@ -306,6 +342,8 @@ export default function createApp({
             liftType,
             liftTypeKey,
             mode,
+            recordKind,
+            records,
             startNumber,
         } = request.body;
 
@@ -318,6 +356,8 @@ export default function createApp({
                 name: liftType,
             });
             platform.setMode(mode);
+            platform.setRecordKind(recordKind);
+            platform.setRecords(records ? JSON.parse(records) : null);
             platform.setSession({
                 description: groupDescription,
                 info: groupInfo,

@@ -22,6 +22,21 @@ export type BreakType =
     | 'SNATCH_DONE'
     | 'TECHNICAL';
 
+export interface CategoryFederationRecords {
+    federation: string;
+    snatch: number;
+    clean: number;
+    total: number;
+    snatchAttempt: boolean;
+    cleanAttempt: boolean;
+    totalAttempt: boolean;
+}
+
+export interface CategoryRecords {
+    category: string[];
+    data: CategoryFederationRecords[];
+}
+
 export type CeremonyType =
     | 'INTRODUCTION'
     | 'MEDALS'
@@ -56,9 +71,29 @@ export type Mode =
     | 'TECHNICAL'
     | 'WAIT';
 
+export interface OwlcmsCategoryFederationRecords {
+    cjHighlight: string;
+    CLEANJERK: number;
+    SNATCH: number;
+    snatchHighlight: string;
+    TOTAL: number;
+    totalHighlight: string;
+}
+
+export interface OwlcmsCategoryRecords {
+    cat: string[];
+    records: OwlcmsCategoryFederationRecords[];
+}
+
 export type OwlcmsLiftType =
     | 'Clean_and_Jerk'
     | 'Snatch';
+
+export interface OwlcmsRecords {
+    recordCategories: string[];
+    recordNames: string[];
+    recordTable: OwlcmsCategoryRecords[];
+}
 
 export interface PlatformState {
     athlete: AthleteState | null;
@@ -69,15 +104,31 @@ export interface PlatformState {
     ceremonyType: CeremonyType | null;
     downSignal: boolean;
     fopState: FopState | null;
+    juryDecision: Decision | null;
+    juryReversal: boolean | null;
     leftReferee: Decision | null;
     liftType: string | null;
     liftTypeKey: LiftTypeKey | null;
     mode: Mode | null;
     name: string;
+    recordKind: RecordKind;
+    records: Records | null;
     rightReferee: Decision | null;
     sessionDescription: string | null;
     sessionInfo: string | null;
     sessionName: string | null;
+}
+
+export type RecordKind =
+    | 'attempt'
+    | 'denied'
+    | 'new'
+    | 'none';
+
+export interface Records {
+    federations: string[];
+    categories: string[];
+    records: CategoryRecords[];
 }
 
 export interface Session {
@@ -85,6 +136,8 @@ export interface Session {
     info: string;
     name: string;
 }
+
+const JURY_DECISION_DURATION = 3_000;
 
 export default class Platform {
     private static platforms = new Map<string, Platform>();
@@ -109,6 +162,10 @@ export default class Platform {
 
     private fopState: FopState = 'INACTIVE';
 
+    private juryDecision: Decision | null = null;
+
+    private juryReversal: boolean | null = null;
+
     private leftReferee: Decision | null = null;
 
     private liftingOrder: number[] = [];
@@ -120,6 +177,10 @@ export default class Platform {
     private mode: Mode = 'WAIT';
 
     private name: string;
+
+    private recordKind: RecordKind = 'none';
+
+    private records: Records | null = null;
 
     private rightReferee: Decision | null = null;
 
@@ -185,11 +246,15 @@ export default class Platform {
             ceremonyType: this.ceremonyType,
             downSignal: this.downSignal,
             fopState: this.fopState,
+            juryDecision: this.juryDecision,
+            juryReversal: this.juryReversal,
             leftReferee: this.leftReferee,
             liftType: this.liftType,
             liftTypeKey: this.liftTypeKey,
             mode: this.mode,
             name: this.name,
+            recordKind: this.recordKind,
+            records: this.records,
             rightReferee: this.rightReferee,
             sessionDescription: this.currentSession?.description || null,
             sessionInfo: this.currentSession?.info || null,
@@ -210,25 +275,6 @@ export default class Platform {
 
     public setCeremonyType(ceremonyType: CeremonyType | null): void {
         this.ceremonyType = ceremonyType;
-    }
-
-    public setFopState(fopState: FopState): void {
-        this.fopState = fopState;
-    }
-
-    public setLiftType({
-        key,
-        name,
-    }: {
-        key: OwlcmsLiftType;
-        name: string | null;
-    }): void {
-        this.liftTypeKey = (key?.toUpperCase() as LiftTypeKey) || null;
-        this.liftType = name;
-    }
-
-    public setMode(mode: Mode): void {
-        this.mode = mode;
     }
 
     public setCurrentAthlete(startNumber: number): void {
@@ -258,6 +304,75 @@ export default class Platform {
             this.leftReferee = null;
             this.rightReferee = null;
         }
+    }
+
+    public setFopState(fopState: FopState): void {
+        this.fopState = fopState;
+    }
+
+    public setJuryDecision({
+        decision,
+        reversal,
+    }: {
+        decision: Decision;
+        reversal: boolean;
+    }) {
+        this.juryDecision = decision;
+        this.juryReversal = reversal;
+
+        setTimeout(() => {
+            this.juryDecision = null;
+            this.juryReversal = null;
+        }, JURY_DECISION_DURATION);
+    }
+
+    public setLiftType({
+        key,
+        name,
+    }: {
+        key: OwlcmsLiftType;
+        name: string | null;
+    }): void {
+        this.liftTypeKey = (key?.toUpperCase() as LiftTypeKey) || null;
+        this.liftType = name;
+    }
+
+    public setMode(mode: Mode): void {
+        this.mode = mode;
+    }
+
+    public setRecordKind(recordKind: RecordKind): void {
+        this.recordKind = recordKind || 'none';
+    }
+
+    public setRecords(records: OwlcmsRecords): void {
+        if (!records) {
+            this.records = null;
+            return;
+        }
+
+        const federations = records.recordNames;
+
+        this.records = {
+            federations,
+            categories: records.recordCategories,
+            records: records.recordTable.map((record) => {
+                return {
+                    category: record.cat,
+                    data: record.records.map((data, index) => {
+                        return {
+                            federation: federations[index],
+                            snatch: data.SNATCH,
+                            clean: data.CLEANJERK,
+                            total: data.TOTAL,
+                            snatchAttempt: !!data.snatchHighlight,
+                            cleanAttempt: !!data.cjHighlight,
+                            totalAttempt: !!data.totalHighlight,
+                        };
+                    }),
+                };
+            }),
+        };
     }
 
     public setSession(session: {
