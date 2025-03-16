@@ -61,10 +61,13 @@ export type LiftTypeKey =
 
 export type Mode =
     | 'BEFORE_INTRODUCTION'
+    | 'CEREMONY'
     | 'CURRENT_ATHLETE'
     | 'FIRST_CJ'
     | 'FIRST_SNATCH'
+    | 'INTRO_COUNTDOWN'
     | 'INTRODUCTION'
+    | 'LIFT_COUNTDOWN'
     | 'LIFT_COUNTDOWN_CEREMONY'
     | 'LIFTING'
     | 'MARSHAL'
@@ -107,6 +110,7 @@ export interface PlatformState {
     juryDecision: Decision | null;
     juryReversal: boolean | null;
     leftReferee: Decision | null;
+    leaders: AthleteState[];
     liftType: string | null;
     liftTypeKey: LiftTypeKey | null;
     mode: Mode | null;
@@ -165,6 +169,8 @@ export default class Platform {
     private juryDecision: Decision | null = null;
 
     private juryReversal: boolean | null = null;
+
+    private leaders: Athlete[] = [];
 
     private leftReferee: Decision | null = null;
 
@@ -248,6 +254,7 @@ export default class Platform {
             fopState: this.fopState,
             juryDecision: this.juryDecision,
             juryReversal: this.juryReversal,
+            leaders: this.leaders.map((leader) => leader.getState()),
             leftReferee: this.leftReferee,
             liftType: this.liftType,
             liftTypeKey: this.liftTypeKey,
@@ -324,6 +331,16 @@ export default class Platform {
             this.juryDecision = null;
             this.juryReversal = null;
         }, JURY_DECISION_DURATION);
+    }
+
+    public setLeaders(athletes: OwlcmsAthleteList): void {
+        const realAthletes = athletes.filter((athlete) => {
+            return !('isSpacer' in athlete);
+        }) as OwlcmsAthlete[];
+
+        this.leaders = realAthletes.map((athleteData: OwlcmsAthlete) => {
+            return new Athlete(athleteData);
+        });
     }
 
     public setLiftType({

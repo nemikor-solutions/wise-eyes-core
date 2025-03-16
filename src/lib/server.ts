@@ -338,6 +338,7 @@ export default function createApp({
             groupDescription,
             groupInfo,
             groupName,
+            leaders,
             liftingOrderAthletes,
             liftType,
             liftTypeKey,
@@ -351,6 +352,7 @@ export default function createApp({
             platform.setBreakType(breakType || null);
             platform.setCeremonyType(ceremonyType || null);
             platform.setFopState(fopState);
+            platform.setLeaders(leaders ? JSON.parse(leaders) : []);
             platform.setLiftType({
                 key: liftTypeKey,
                 name: liftType,
